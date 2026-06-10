@@ -1,8 +1,5 @@
 import * as net from "net";
 
-// You can use print statements as follows for debugging, they'll be visible when running tests.
-console.log("Logs from your program will appear here!");
-
 // Main interface for http request
 interface httpRequest {
   httpMethod: string;
@@ -13,6 +10,7 @@ interface httpRequest {
   headers?: Record<string, string>;
 }
 
+// We parse the data
 const parseData = (data: string[]): httpRequest => {
   // First we verify the method
   const reqLineElem: string[] = data[0].split(" ");
@@ -38,10 +36,8 @@ const server = net.createServer((socket) => {
     // We parse the data to the request
     const req: httpRequest = parseData(dataSplitted);
     console.log(req.requestTarget);
-    if (req.requestTarget === "/")
-      socket.write(okResponse);
-    else
-      socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
+    socket.write( (req.requestTarget === "/") ?
+      okResponse : "HTTP/1.1 404 Not Found\r\n\r\n");
   });
 
   // This event listens
