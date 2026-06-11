@@ -29,7 +29,7 @@ const parseData = (data: string[]): httpRequest => {
   let i = 1;
   let headersFound: Record<string, string> = {};
   for (const e of data.slice(1)) {
-    if (e === "\r\n") {
+    if (e === "") {
       i++;
       break; // End of headers
     }
@@ -55,6 +55,7 @@ const parseData = (data: string[]): httpRequest => {
   };
 }
 
+
 function parseRes(req: httpRequest): httpResponse {
   let sL = req.httpVersion;
   let target: string[] = req.requestTarget.split("/");
@@ -66,22 +67,40 @@ function parseRes(req: httpRequest): httpResponse {
   }
   else if (target[1] === "echo") {
     sL += " 200 OK";
+    // We add the headers
     headersRes["Content-Type"] = "text/plain";
-    headersRes["Content-Length"] = target[2].length.toString();
-    bodyRes = target[2];
+    bodyRes = target[2] ?? "";
+    headersRes["Content-Length"] = bodyRes.length.toString();
   }
   else {
-    sL = "HTTP/1.1 404 Not Found\r\n\r\n";
+    sL = "HTTP/1.1 404 Not Found";
   }
 
   return {
     statusLine: sL,
     headers: headersRes,
     body: bodyRes,
-  }
+  };
 }
 
-const okResponse = "HTTP/1.1 200 OK\r\n";
+function printResponse(ans: httpResponse): string {
+  let write: string = ans.statusLine + "\r\n";
+  console.log(ans.statusLine + "\r\n");
+
+  if (ans.headers !== undefined) {
+    for (const [key, value] of Object.entries(ans.headers)) {
+      console.log(key + ": " + value + "\r\n");
+      write += key + ": " + value + "\r\n";
+    }
+  }
+
+  write += "\r\n";
+  write += (ans.body !== undefined) ? ans.body : "";
+  console.log("\r\n" + (ans.body ?? ""));
+
+  return write;
+}
+
 const server = net.createServer((socket) => {
   console.log("User connected");
 
@@ -98,20 +117,9 @@ const server = net.createServer((socket) => {
     const ans: httpResponse = parseRes(req);
 
     // Print of the response
-    let write: string = ans.statusLine + "\r\n";
-    console.log(ans.statusLine + "\r\n");
-    if (ans.headers !== undefined) {
-      for (const [key, value] of Object.entries(ans.headers)) {
-        console.log(key + ": " + value + "\r\n");
-        write += key + ": " + value + "\r\n";
-      }
-    }
+    const res = printResponse(ans);
 
-    write += "\r\n";
-    write += (ans.body !== undefined) ? ans.body : "";
-    console.log("\r\n" + (ans.body !== undefined) ? ans.body : "");
-
-    socket.write(write);
+    socket.write(res);
   });
 
   // This event listens
