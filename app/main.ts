@@ -55,21 +55,44 @@ const parseData = (data: string[]): httpRequest => {
   };
 }
 
+// Function to print elements of the request
+function printRequest(req: httpRequest) {
+  console.log("Print of the request:");
+  console.log(req.httpMethod + "\n" + req.requestTarget + "\n" + req.httpVersion);
+  if (req.headers !== undefined) {
+    for (const [key, value] of Object.entries(req.headers)) {
+      console.log(key + ": " + value);
+    }
+  }
+  console.log("");
 
+  console.log(req.body);
+}
+
+// Function por parse the data to the response
 function parseRes(req: httpRequest): httpResponse {
-  let sL = req.httpVersion;
+  let sL = req.httpVersion; // We first set the httpVersion
   let target: string[] = req.requestTarget.split("/");
 
+  let endpoint = target[1] ?? ""; // A variable to handle the endpoint easier
   let headersRes: Record<string, string> = {};
   let bodyRes: string = "";
+
   if (target.length === 1 || req.requestTarget === "/") {
     sL += " 200 OK";
   }
-  else if (target[1] === "echo") {
+  else if (endpoint === "echo") {
     sL += " 200 OK";
     // We add the headers
     headersRes["Content-Type"] = "text/plain";
     bodyRes = target[2] ?? "";
+    headersRes["Content-Length"] = bodyRes.length.toString();
+  }
+  else if (endpoint === "user-agent"){
+    sL += " 200 OK";
+    // We add the headers
+    headersRes["Content-Type"] = "text/plain";
+    bodyRes = req.headers?.["User-Agent"] ?? "";
     headersRes["Content-Length"] = bodyRes.length.toString();
   }
   else {
@@ -83,13 +106,14 @@ function parseRes(req: httpRequest): httpResponse {
   };
 }
 
+// Print elements of the response and also returns the string to write on the socket
 function printResponse(ans: httpResponse): string {
   let write: string = ans.statusLine + "\r\n";
-  console.log(ans.statusLine + "\r\n");
+  console.log(ans.statusLine);
 
   if (ans.headers !== undefined) {
     for (const [key, value] of Object.entries(ans.headers)) {
-      console.log(key + ": " + value + "\r\n");
+      console.log(key + ": " + value);
       write += key + ": " + value + "\r\n";
     }
   }
@@ -112,7 +136,7 @@ const server = net.createServer((socket) => {
 
     // We parse the data to the request
     const req: httpRequest = parseData(dataSplitted);
-
+    printRequest(req);
     // Now We can create the answer
     const ans: httpResponse = parseRes(req);
 
