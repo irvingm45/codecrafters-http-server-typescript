@@ -1,4 +1,16 @@
 import * as net from "net";
+import { readFile } from "fs/promises";
+import { loadEnvFile } from "process";
+import { readFileSync } from "fs";
+import { Command } from "commander";
+
+// For reading flags
+const flags = new Command();
+flags
+  .option("-d, --directory <string>", "For directories", "")
+  .parse();
+
+const options = flags.opts();
 
 // Main interface for http request
 interface httpRequest {
@@ -72,9 +84,10 @@ function printRequest(req: httpRequest) {
 // Function por parse the data to the response
 function parseRes(req: httpRequest): httpResponse {
   let sL = req.httpVersion; // We first set the httpVersion
-  let target: string[] = req.requestTarget.split("/");
 
+  let target: string[] = req.requestTarget.split("/", 3); // We split the request Target
   let endpoint = target[1] ?? ""; // A variable to handle the endpoint easier
+
   let headersRes: Record<string, string> = {};
   let bodyRes: string = "";
 
@@ -94,6 +107,22 @@ function parseRes(req: httpRequest): httpResponse {
     headersRes["Content-Type"] = "text/plain";
     bodyRes = req.headers?.["User-Agent"] ?? "";
     headersRes["Content-Length"] = bodyRes.length.toString();
+  }
+  else if (endpoint === "files") {
+    sL += " 200 OK";
+    const filePath = options.directory + target[2];
+    console.log(filePath);
+
+
+    try {
+      bodyRes = readFileSync(filePath, "utf-8");
+      headersRes["Content-Type"] = "application/octet-stream";
+      headersRes["Content-Length"] = bodyRes.length.toString();
+    }
+    catch (e: any) {
+      console.log("File path doesn't exists: " + filePath);
+      sL = "HTTP/1.1 404 Not Found"
+    }
   }
   else {
     sL = "HTTP/1.1 404 Not Found";
@@ -127,7 +156,6 @@ function printResponse(ans: httpResponse): string {
 
 const server = net.createServer((socket) => {
   console.log("User connected");
-
   // When user send information through the socket
   socket.on("data", (data) => {
     // We parse the data
