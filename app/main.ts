@@ -3,6 +3,9 @@ import { readFile } from "fs/promises";
 import { loadEnvFile } from "process";
 import { readFileSync } from "fs";
 import { Command } from "commander";
+import { writeFileSync } from "fs";
+import { mkdir } from "fs/promises";
+import { file } from "bun";
 
 // For reading flags
 const flags = new Command();
@@ -81,10 +84,8 @@ function printRequest(req: httpRequest) {
   console.log(req.body);
 }
 
-// Function por parse the data to the response
-function parseRes(req: httpRequest): httpResponse {
+function getMethod(req: httpRequest): httpResponse {
   let sL = req.httpVersion; // We first set the httpVersion
-
   let target: string[] = req.requestTarget.split("/", 3); // We split the request Target
   let endpoint = target[1] ?? ""; // A variable to handle the endpoint easier
 
@@ -110,15 +111,16 @@ function parseRes(req: httpRequest): httpResponse {
   }
   else if (endpoint === "files") {
     sL += " 200 OK";
+    // We look fot the directory flag an it's value
     const filePath = options.directory + target[2];
     console.log(filePath);
-
 
     try {
       bodyRes = readFileSync(filePath, "utf-8");
       headersRes["Content-Type"] = "application/octet-stream";
       headersRes["Content-Length"] = bodyRes.length.toString();
     }
+    // In case the file path doesn't exists
     catch (e: any) {
       console.log("File path doesn't exists: " + filePath);
       sL = "HTTP/1.1 404 Not Found"
@@ -127,12 +129,62 @@ function parseRes(req: httpRequest): httpResponse {
   else {
     sL = "HTTP/1.1 404 Not Found";
   }
+  return {
+    statusLine: sL,
+    headers: headersRes,
+    body: bodyRes,
+  };
+}
+
+function postMethod(req: httpRequest): httpResponse {
+  let sL = req.httpVersion; // We first set the httpVersion
+  let target: string[] = req.requestTarget.split("/", 3); // We split the request Target
+  let endpoint = target[1] ?? ""; // A variable to handle the endpoint easier
+
+  let headersRes: Record<string, string> = {};
+  let bodyRes: string = "";
+
+  if (endpoint === "files") {
+    sL += " 201 Created";
+    // We look for the directory flag an it's value
+    const filePath = options.directory + target[2];
+    console.log(filePath);
+
+    try {
+      // We write the content on the file
+      writeFileSync(filePath, req.body ?? "", "utf-8");
+      bodyRes = req.body ?? "";
+      headersRes["Content-Type"] = "application/octet-stream";
+      headersRes["Content-Length"] = bodyRes.length.toString();
+    }
+    // In case the file path doesn't exists
+    catch (e: any) {
+      console.log("File path doesn't exists: " + filePath);
+      sL = "HTTP/1.1 404 Not Found"
+    }
+  }
 
   return {
     statusLine: sL,
     headers: headersRes,
     body: bodyRes,
   };
+}
+
+// Function por parse the data to the response
+function parseRes(req: httpRequest): httpResponse {
+  if (req.httpMethod === "GET") {
+    return getMethod(req);
+  }
+  else if (req.httpMethod === "POST") {
+    return postMethod(req);
+  }
+
+  return {
+    statusLine: "",
+    headers: {},
+    body: ""
+  }
 }
 
 // Print elements of the response and also returns the string to write on the socket
