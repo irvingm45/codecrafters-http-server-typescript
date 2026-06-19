@@ -71,7 +71,7 @@ const parseRequest = (data: string[]): HttpRequest => {
 // Function to print elements of the request
 function printRequest(req: HttpRequest) {
   console.log("Print of the request:");
-  console.log(req.httpMethod + "\n" + req.requestTarget + "\n" + req.httpVersion);
+  console.log(`${req.httpMethod}\n${req.requestTarget}\n${req.httpVersion}`);
   if (req.headers !== undefined) {
     for (const [key, value] of Object.entries(req.headers)) {
       console.log(key + ": " + value);
@@ -95,16 +95,12 @@ const parseTarget = (requestTarget: string) => {
 const contentEncoding = (encodings?: string): string => {
   if (!encodings) return "";
 
-  const encodingsOpts = encodings.split(", ");
+  const encodingsOpts = encodings.split(",").map(e => e.trim()); // We split the encodings and remove spaces
   const collection: string[] = ["gzip"];
-  let ans: string = "";
-  for (const e of encodingsOpts) {
-    if (collection.includes(e))
-      ans += e + " ";
-  }
 
-  ans = ans.trim(); // We remove the last space
-  return ans;
+  return encodingsOpts
+    .filter(e => collection.includes(e))
+    .join(", ");
 }
 
 const buildResponse = (
@@ -176,7 +172,7 @@ function postMethod(req: HttpRequest): HttpResponse {
     try {
       // We write the content on the file
       writeFileSync(filePath, req.body ?? "", "utf-8");
-      return buildResponse(`${req.httpVersion} 201 Created`, req.body ?? "", "application/octet-stream")
+      return buildResponse(`${req.httpVersion} 201 Created`, req.body ?? "", "application/octet-stream", req.headers);
     }
     // In case the file path doesn't exists
     catch (e: any) {
@@ -196,11 +192,7 @@ function parseResponse(req: HttpRequest): HttpResponse {
     return postMethod(req);
   }
 
-  return {
-    statusLine: "",
-    headers: {},
-    body: ""
-  }
+  return buildResponse(`${req.httpVersion} 405 Method Not Allowed`);
 }
 
 // Print elements of the response and also returns the string to write on the socket
