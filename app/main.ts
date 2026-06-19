@@ -1,11 +1,7 @@
 import * as net from "net";
-import { readFile } from "fs/promises";
-import { loadEnvFile } from "process";
-import { readFileSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
 import { Command } from "commander";
-import { writeFileSync } from "fs";
-import { mkdir } from "fs/promises";
-import { file } from "bun";
+import path from "path";
 
 // For reading flags
 const flags = new Command();
@@ -16,7 +12,7 @@ flags
 const options = flags.opts();
 
 // Main interface for http request
-interface httpRequest {
+interface HttpRequest {
   httpMethod: string;
   requestTarget: string;
   httpVersion: string;
@@ -27,14 +23,14 @@ interface httpRequest {
 }
 
 // Interface for http response
-interface httpResponse {
+interface HttpResponse {
   statusLine: string;
   headers?: Record<string, string>;
   body?: string;
 }
 
-// We parse the data to the httpRequest
-const parseData = (data: string[]): httpRequest => {
+// We parse the data to the HttpRequest
+const parseRequest = (data: string[]): HttpRequest => {
   // First we verify the method
   const reqLineElem: string[] = data[0].split(" ");
 
@@ -56,9 +52,11 @@ const parseData = (data: string[]): httpRequest => {
     i++;
   }
 
-  let bodyFound: string = "";
-  for (i; i < data.length; i++)
-    bodyFound += data[i];
+  const bodyFound = data.slice(i).join("\r\n"); // We join the remaining lines to get the body
+  // This loop can have issues if the body contains \r\n, so it's better to just join the remaining lines instead of concatenating them one by one
+  // let bodyFound: string = "";
+  // for (i; i < data.length; i++)
+  //   bodyFound += data[i];
 
   return {
     httpMethod: reqLineElem[0],
@@ -71,7 +69,7 @@ const parseData = (data: string[]): httpRequest => {
 }
 
 // Function to print elements of the request
-function printRequest(req: httpRequest) {
+function printRequest(req: HttpRequest) {
   console.log("Print of the request:");
   console.log(req.httpMethod + "\n" + req.requestTarget + "\n" + req.httpVersion);
   if (req.headers !== undefined) {
@@ -84,95 +82,113 @@ function printRequest(req: httpRequest) {
   console.log(req.body);
 }
 
-function getMethod(req: httpRequest): httpResponse {
-  let sL = req.httpVersion; // We first set the httpVersion
-  let target: string[] = req.requestTarget.split("/", 3); // We split the request Target
-  let endpoint = target[1] ?? ""; // A variable to handle the endpoint easier
+// To split the path and get the endpoint
+const parseTarget = (requestTarget: string) => {
+  const parts = requestTarget.split("/", 3);
+  return {
+    endpoint: parts[1] ?? "",
+    target: parts[2] ?? "",
+  }
+}
 
-  let headersRes: Record<string, string> = {};
-  let bodyRes: string = "";
+// To add content Encoding
+const contentEncoding = (encodings?: string): string => {
+  if (!encodings) return "";
 
-  if (target.length === 1 || req.requestTarget === "/") {
-    sL += " 200 OK";
+  const encodingsOpts = encodings.split(", ");
+  const collection: string[] = ["gzip"];
+  let ans: string = "";
+  for (const e of encodingsOpts) {
+    if (collection.includes(e))
+      ans += e + " ";
   }
-  else if (endpoint === "echo") {
-    sL += " 200 OK";
-    // We add the headers
-    headersRes["Content-Type"] = "text/plain";
-    bodyRes = target[2] ?? "";
-    headersRes["Content-Length"] = bodyRes.length.toString();
+
+  ans = ans.trim(); // We remove the last space
+  return ans;
+}
+
+const buildResponse = (
+  statusLine: string,
+  body: string = "",
+  contentType: string = "",
+  headersReq: Record<string, string> = {}
+): HttpResponse => {
+  let headers: Record<string, string> = {};
+  if (contentType) {
+    headers["Content-Type"] = contentType;
+    headers["Content-Length"] = body.length.toString();
   }
-  else if (endpoint === "user-agent"){
-    sL += " 200 OK";
-    // We add the headers
-    headersRes["Content-Type"] = "text/plain";
-    bodyRes = req.headers?.["User-Agent"] ?? "";
-    headersRes["Content-Length"] = bodyRes.length.toString();
+
+  // Addition of content encoding
+  const encoding = contentEncoding(headersReq?.["Accept-Encoding"] ?? "");
+  if (encoding) {
+    headers["Content-Encoding"] = encoding;
   }
+
+  return { statusLine, headers, body };
+}
+
+function getMethod(req: HttpRequest): HttpResponse {
+  const { endpoint, target } = parseTarget(req.requestTarget);
+
+  // Just a 200 OK if the target is empty or just "/"
+  if (endpoint === "" || req.requestTarget === "/")
+    return buildResponse(`${req.httpVersion} 200 OK`);
+  // If the endpoint is echo, we return the target as body (because echo repeats what is sended)
+  if (endpoint === "echo")
+    return buildResponse(`${req.httpVersion} 200 OK`, target, "text/plain", req.headers);
+  // User-agent just returns the value of User-Agent header
+  if (endpoint === "user-agent") {
+    const bodyRes = req.headers?.["User-Agent"] ?? "";
+    return buildResponse(`${req.httpVersion} 200 OK`, bodyRes, "text/plain", req.headers);
+  }
+  // Returns the data of the file
   else if (endpoint === "files") {
-    sL += " 200 OK";
     // We look fot the directory flag an it's value
-    const filePath = options.directory + target[2];
+    // const filePath: string = options.directory + target[2];
+    const filePath: string = path.join(options.directory, target); // It's better to use path.join to avoid issues with different operating systems
     console.log(filePath);
 
     try {
-      bodyRes = readFileSync(filePath, "utf-8");
-      headersRes["Content-Type"] = "application/octet-stream";
-      headersRes["Content-Length"] = bodyRes.length.toString();
+      const bodyRes = readFileSync(filePath, "utf-8"); // We read the content of the file
+      return buildResponse(`${req.httpVersion} 200 OK`, bodyRes, "application/octet-stream", req.headers);
     }
     // In case the file path doesn't exists
     catch (e: any) {
       console.log("File path doesn't exists: " + filePath);
-      sL = "HTTP/1.1 404 Not Found"
+      return buildResponse(`${req.httpVersion} 404 Not Found`);
     }
   }
-  else {
-    sL = "HTTP/1.1 404 Not Found";
-  }
-  return {
-    statusLine: sL,
-    headers: headersRes,
-    body: bodyRes,
-  };
+
+  // In case the endpoint is not recognized or the file doesn't exists, we return a 404 Not Found
+  return buildResponse(`${req.httpVersion} 404 Not Found`);
 }
 
-function postMethod(req: httpRequest): httpResponse {
-  let sL = req.httpVersion; // We first set the httpVersion
-  let target: string[] = req.requestTarget.split("/", 3); // We split the request Target
-  let endpoint = target[1] ?? ""; // A variable to handle the endpoint easier
-
-  let headersRes: Record<string, string> = {};
-  let bodyRes: string = "";
+function postMethod(req: HttpRequest): HttpResponse {
+  const { endpoint, target } = parseTarget(req.requestTarget);
 
   if (endpoint === "files") {
-    sL += " 201 Created";
     // We look for the directory flag an it's value
-    const filePath = options.directory + target[2];
+    // const filePath = options.directory + target;
+    const filePath = path.join(options.directory, target);
     console.log(filePath);
 
     try {
       // We write the content on the file
       writeFileSync(filePath, req.body ?? "", "utf-8");
-      bodyRes = req.body ?? "";
-      headersRes["Content-Type"] = "application/octet-stream";
-      headersRes["Content-Length"] = bodyRes.length.toString();
+      return buildResponse(`${req.httpVersion} 201 Created`, req.body ?? "", "application/octet-stream")
     }
     // In case the file path doesn't exists
     catch (e: any) {
       console.log("File path doesn't exists: " + filePath);
-      sL = "HTTP/1.1 404 Not Found"
+      return buildResponse(`${req.httpVersion} 404 Not Found`);
     }
   }
-
-  return {
-    statusLine: sL,
-    headers: headersRes,
-    body: bodyRes,
-  };
+  return buildResponse(`${req.httpVersion} 404 Not Found`);
 }
 
 // Function por parse the data to the response
-function parseRes(req: httpRequest): httpResponse {
+function parseResponse(req: HttpRequest): HttpResponse {
   if (req.httpMethod === "GET") {
     return getMethod(req);
   }
@@ -188,7 +204,7 @@ function parseRes(req: httpRequest): httpResponse {
 }
 
 // Print elements of the response and also returns the string to write on the socket
-function printResponse(ans: httpResponse): string {
+function printResponse(ans: HttpResponse): string {
   let write: string = ans.statusLine + "\r\n";
   console.log(ans.statusLine);
 
@@ -215,10 +231,10 @@ const server = net.createServer((socket) => {
     const dataSplitted: string[] = rawData.split("\r\n");
 
     // We parse the data to the request
-    const req: httpRequest = parseData(dataSplitted);
+    const req: HttpRequest = parseRequest(dataSplitted);
     printRequest(req);
     // Now We can create the answer
-    const ans: httpResponse = parseRes(req);
+    const ans: HttpResponse = parseResponse(req);
 
     // Print of the response
     const res = printResponse(ans);
