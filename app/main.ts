@@ -1,6 +1,8 @@
 import * as net from "net";
 import { readFileSync, writeFileSync } from "fs";
 import { Command } from "commander";
+import { buffer } from "stream/consumers";
+import pako from "pako";
 import path from "path";
 
 // For reading flags
@@ -26,7 +28,7 @@ interface HttpRequest {
 interface HttpResponse {
   statusLine: string;
   headers?: Record<string, string>;
-  body?: string;
+  body?: string | Buffer | Uint8Array;
 }
 
 // We parse the data to the HttpRequest
@@ -105,20 +107,25 @@ const contentEncoding = (encodings?: string): string => {
 
 const buildResponse = (
   statusLine: string,
-  body: string = "",
+  body: string | Buffer | Uint8Array = "",
   contentType: string = "",
   headersReq: Record<string, string> = {}
 ): HttpResponse => {
   let headers: Record<string, string> = {};
-  if (contentType) {
-    headers["Content-Type"] = contentType;
-    headers["Content-Length"] = body.length.toString();
-  }
 
   // Addition of content encoding
   const encoding = contentEncoding(headersReq?.["Accept-Encoding"] ?? "");
   if (encoding) {
-    headers["Content-Encoding"] = encoding;
+    if (encoding.includes("gzip")) {
+      headers["Content-Encoding"] = "gzip";
+      // We now compress the body in gzip
+      body = pako.gzip(body);
+    }
+  }
+
+  if (contentType) {
+    headers["Content-Type"] = contentType;
+    headers["Content-Length"] = body.length.toString();
   }
 
   return { statusLine, headers, body };
@@ -197,7 +204,7 @@ function parseResponse(req: HttpRequest): HttpResponse {
 
 // Print elements of the response and also returns the string to write on the socket
 function printResponse(ans: HttpResponse): string {
-  let write: string = ans.statusLine + "\r\n";
+  let write = ans.statusLine + "\r\n";
   console.log(ans.statusLine);
 
   if (ans.headers !== undefined) {
@@ -208,9 +215,6 @@ function printResponse(ans: HttpResponse): string {
   }
 
   write += "\r\n";
-  write += (ans.body !== undefined) ? ans.body : "";
-  console.log("\r\n" + (ans.body ?? ""));
-
   return write;
 }
 
@@ -225,13 +229,18 @@ const server = net.createServer((socket) => {
     // We parse the data to the request
     const req: HttpRequest = parseRequest(dataSplitted);
     printRequest(req);
+
     // Now We can create the answer
     const ans: HttpResponse = parseResponse(req);
 
     // Print of the response
-    const res = printResponse(ans);
+    const header = printResponse(ans);
 
-    socket.write(res);
+    socket.write(header);
+    if (ans.body !== undefined) {
+      console.log(ans.body);
+      socket.write(ans.body);
+    }
   });
 
   // This event listens
