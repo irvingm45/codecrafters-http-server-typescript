@@ -1,37 +1,97 @@
 [![progress-banner](https://backend.codecrafters.io/progress/http-server/203cc7cf-9be8-4ef4-a7c6-7d792ceae4f6)](https://app.codecrafters.io/users/irvingm45?r=2qF)
 
-This is a starting point for TypeScript solutions to the
-["Build Your Own HTTP server" Challenge](https://app.codecrafters.io/courses/http-server/overview).
+# HTTP Server en TypeScript
 
-[HTTP](https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol) is the
-protocol that powers the web. In this challenge, you'll build a HTTP/1.1 server
-that is capable of serving multiple clients.
+Este proyecto es una implementación de un servidor HTTP/1.1 construido desde cero como parte del desafío ["Build Your Own HTTP server"](https://app.codecrafters.io/courses/http-server/overview) de [CodeCrafters](https://codecrafters.io). El servidor es capaz de atender múltiples clientes sobre TCP y responde a diferentes rutas y métodos HTTP.
 
-Along the way you'll learn about TCP servers,
-[HTTP request syntax](https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html),
-and more.
+## Stack tecnológico
 
-**Note**: If you're viewing this repo on GitHub, head over to
-[codecrafters.io](https://codecrafters.io) to try the challenge.
+- **TypeScript**: lenguaje principal.
+- **Bun**: runtime y gestor de paquetes (versión 1.3 o superior recomendada).
+- **`node:net`**: módulo de red de Node.js para crear el servidor TCP.
+- **Commander.js**: parseo de argumentos de línea de comandos (por ejemplo, `--directory`).
+- **pako**: compresión `gzip` para respuestas cuando el cliente lo solicita.
 
-# Passing the first stage
+## Características
 
-The entry point for your HTTP server implementation is in `app/main.ts`. Study
-and uncomment the relevant code, and then run the command below to execute the
-tests on our servers:
+- Servidor HTTP/1.1 sobre TCP en el puerto `4221`.
+- Soporte para los métodos `GET` y `POST`.
+- Rutas implementadas:
+  - `GET /` — responde con `200 OK`.
+  - `GET /echo/<mensaje>` — devuelve el mensaje recibido.
+  - `GET /user-agent` — devuelde el valor del header `User-Agent`.
+  - `GET /files/<nombre>` — lee y devuelve un archivo desde el directorio configurado.
+  - `POST /files/<nombre>` — crea un archivo en el directorio configurado con el cuerpo de la petición.
+- Compresión `gzip` automática cuando el cliente envía `Accept-Encoding: gzip`.
+- Manejo del header `Connection: close`.
+
+## Uso
+
+### Requisitos
+
+- Tener instalado [Bun](https://bun.sh) (versión 1.3 o superior).
+
+### Ejecutar en local
+
+```sh
+bun run app/main.ts
+```
+
+O usando el script del proyecto:
+
+```sh
+./your_program.sh
+```
+
+Por defecto el servidor escucha en `localhost:4221`.
+
+### Especificar un directorio para archivos
+
+Para que los endpoints `/files` funcionen, indica el directorio base con la bandera `--directory`:
+
+```sh
+bun run app/main.ts --directory /tmp/data
+```
+
+### Probar el servidor
+
+```sh
+# Ping
+ curl http://localhost:4221/
+
+# Echo
+ curl http://localhost:4221/echo/hola
+
+# User-Agent
+ curl -H "User-Agent: mi-cliente" http://localhost:4221/user-agent
+
+# Crear un archivo
+ curl -X POST -d "contenido del archivo" http://localhost:4221/files/ejemplo.txt
+
+# Leer un archivo
+ curl http://localhost:4221/files/ejemplo.txt
+```
+
+## Enviar la solución a CodeCrafters
 
 ```sh
 codecrafters submit
 ```
 
-Time to move on to the next stage!
+El resultado de las pruebas se mostrará en la terminal.
 
-# Stage 2 & beyond
+## Estructura del proyecto
 
-Note: This section is for stages 2 and beyond.
+```
+.
+├── app/
+│   └── main.ts          # Punto de entrada del servidor HTTP
+├── package.json         # Dependencias y scripts
+├── tsconfig.json        # Configuración de TypeScript
+├── your_program.sh      # Script para ejecutar el servidor
+└── README.md            # Este archivo
+```
 
-1. Ensure you have `bun (1.3)` installed locally
-1. Run `./your_program.sh` to run your program, which is implemented in
-   `app/main.ts`.
-1. Run `codecrafters submit` to submit your solution to CodeCrafters. Test
-   output will be streamed to your terminal.
+## Notas
+
+- Si estás viendo este repositorio en GitHub, puedes probar el desafío directamente en [codecrafters.io](https://codecrafters.io).
