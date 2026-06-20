@@ -128,6 +128,9 @@ const buildResponse = (
     headers["Content-Length"] = body.length.toString();
   }
 
+  if (headersReq["Connection"] === "close")
+    headers["Connection"] = "close";
+
   return { statusLine, headers, body };
 }
 
@@ -136,7 +139,7 @@ function getMethod(req: HttpRequest): HttpResponse {
 
   // Just a 200 OK if the target is empty or just "/"
   if (endpoint === "" || req.requestTarget === "/")
-    return buildResponse(`${req.httpVersion} 200 OK`);
+    return buildResponse(`${req.httpVersion} 200 OK`, "", "", req.headers);
   // If the endpoint is echo, we return the target as body (because echo repeats what is sended)
   if (endpoint === "echo")
     return buildResponse(`${req.httpVersion} 200 OK`, target, "text/plain", req.headers);
@@ -241,6 +244,9 @@ const server = net.createServer((socket) => {
       console.log(ans.body);
       socket.write(ans.body);
     }
+
+    if (ans?.headers?.["Connection"] === "close")
+      socket.end();
   });
 
   // This event listens
